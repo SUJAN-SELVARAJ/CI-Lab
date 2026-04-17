@@ -1,0 +1,140 @@
+Script started on Thursday 16 April 2026 01:03:02 PM IS
+[23bcs120@mepcolinux ex8]$cat n2.py 
+import pandas as pd
+from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+
+data = load_breast_cancer()
+table = pd.DataFrame(data.data, columns=data.feature_names)
+table['target'] = data.target
+
+X = table.iloc[:, 0:-1].values
+y = table.iloc[:, -1].values
+
+n_trees = int(input("Enter no. of trees: "))
+splits = {'70-30': 0.3, '60-40': 0.4, '75-25': 0.25}
+result = []
+conf_mat = {}
+
+for split_name, test_size in splits.items():
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42)
+
+    model = RandomForestClassifier(n_estimators=n_trees, random_state=42)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+
+    acr = accuracy_score(y_test, y_pred)
+    prec = precision_score(y_test, y_pred)
+    rec = recall_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred)
+
+    result.append([split_name, acr, prec, rec, f1])
+
+    tn, fp, fn, tp = confusion_matrix(y_test, y_pred).ravel()
+    conf_mat[split_name] = (tn, fp, fn, tp)
+
+print("\nResults for splits:")
+print(f"{'Split':<10} {'Accuracy':<10} {'Precision':<10} {'Recall':<10} {'F1_Score':<10}")
+for row in result:
+    print(f"{row[0]:<10} {row[1]:.4f}    {row[2]:.4f}    {row[3]:.4f}    {row[4]:.4f}")
+
+print("\nConfusion Matrix:")
+
+for split_name, (tn, fp, fn, tp) in conf_mat.items():
+    print(f"{split_name} Split:\n")
+    print("\t Predicted")
+    print(f"Actual | {tn}   {fp} ")
+    print(f"         {fn}   {tp} ")
+
+PS C:\Users\Administrator\Desktop> python rf.py
+Enter number of decision trees: 10
+entropy or gini impurity:entropy
+
+Final Results Table:
+
+Split      Accuracy   Precision    Recall     F1-score
+70-30      0.9474     0.9626       0.9537     0.9581
+60-40      0.9737     0.9863       0.9730     0.9796
+75-25      0.9441     0.9765       0.9326     0.9540
+
+Confusion Matrices:
+
+70-30 Split:
+            Predicted
+Actual    TP=103   FN=5
+          FP=4   TN=59
+
+60-40 Split:
+            Predicted
+Actual    TP=144   FN=4
+          FP=2   TN=78
+
+75-25 Split:
+            Predicted
+Actual    TP=83   FN=6
+          FP=2   TN=52
+
+PS C:\Users\Administrator\Desktop> python rf.py
+Enter number of decision trees: 100
+entropy or gini impurity:gini impurity
+
+Final Results Table:
+
+Split      Accuracy   Precision    Recall     F1-score
+70-30      0.9708     0.9640       0.9907     0.9772
+60-40      0.9781     0.9735       0.9932     0.9833
+75-25      0.9650     0.9667       0.9775     0.9721
+
+Confusion Matrices:
+
+70-30 Split:
+            Predicted
+Actual    TP=107   FN=1
+          FP=4   TN=59
+
+60-40 Split:
+            Predicted
+Actual    TP=147   FN=1
+          FP=4   TN=76
+
+75-25 Split:
+            Predicted
+Actual    TP=87   FN=2
+          FP=3   TN=51
+
+PS C:\Users\Administrator\Desktop> python rf.py
+Enter number of decision trees: 10
+entropy or gini impurity:gini impurity
+
+Final Results Table:
+
+Split      Accuracy   Precision    Recall     F1-score
+70-30      0.9649     0.9722       0.9722     0.9722
+60-40      0.9605     0.9793       0.9595     0.9693
+75-25      0.9510     1.0000       0.9213     0.9591
+
+Confusion Matrices:
+
+70-30 Split:
+            Predicted
+Actual    TP=105   FN=3
+          FP=3   TN=60
+
+60-40 Split:
+            Predicted
+Actual    TP=142   FN=6
+          FP=3   TN=77
+
+75-25 Split:
+            Predicted
+Actual    TP=82   FN=7
+          FP=0   TN=54
+
+PS C:\Users\Administrator\Desktop>
+
+[23bcs120@mepcolinux ex8]$exit
+exit
+
+Script done on Thursday 16 April 2026 01:03:15 PM IST

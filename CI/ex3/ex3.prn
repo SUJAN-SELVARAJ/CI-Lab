@@ -1,0 +1,287 @@
+Script started on Tue Feb 24 11:59:48 2026
+[23bcs120@mepcolinux ex3]$cat p4.py
+import math
+import random
+
+def distance(p1, p2, metric):
+    if metric == "euclidean":
+        return math.sqrt(sum((a - b) ** 2 for a, b in zip(p1, p2)))
+    else:  # manhattan
+        return sum(abs(a - b) for a, b in zip(p1, p2))
+
+def normalize(data, query):
+    cols = len(query)
+    norm_data = [row[:] for row in data]
+    norm_query = query[:]
+    mins = [min(row[i] for row in norm_data) for i in range(cols)]
+    maxs = [max(row[i] for row in norm_data) for i in range(cols)]
+
+    for row in norm_data:
+        for i in range(cols):
+            if maxs[i] != mins[i]:
+                row[i] = (row[i] - mins[i]) / (maxs[i] - mins[i])
+
+    for i in range(cols):
+        if maxs[i] != mins[i]:
+            norm_query[i] = (query[i] - mins[i]) / (maxs[i] - mins[i])
+
+    return norm_data, norm_query
+
+def knn():
+    feature_names = [ "Recency","Frequency","Monetary","Time","donatedblood"]
+
+    dataset = []
+    try:
+        with open("transfusion.data.txt") as f:
+            for line in f:
+                parts = line.replace(",", " ").split()
+                if not parts:
+                    continue
+                features = list(map(float, parts[:-1]))
+                label = int(parts[-1])
+                dataset.append([features, label])
+    except FileNotFoundError:
+        print("Error: data.txt not found.")
+        return
+
+    # -------- BALANCED RANDOM SAMPLE OF 100 RECORDS --------
+    class_0 = [row for row in dataset if row[1] == 0]
+    class_1 = [row for row in dataset if row[1] == 1]
+
+    sample_size = min(len(dataset),20 )
+    half = sample_size // 2
+
+    sampled_0 = random.sample(class_0, min(len(class_0), half))
+    sampled_1 = random.sample(class_1, min(len(class_1), half))
+
+    dataset = sampled_0 + sampled_1
+    random.shuffle(dataset)
+    # -------------------------------------------------------
+
+    print("\nAvailable Features:")
+    for i, name in enumerate(feature_names):
+        print(i, "-", name)
+
+    n = int(input("\nEnter number of features: "))
+    idx = list(map(int, input("Enter feature indices: ").split()))
+    sel_names = [feature_names[i] for i in idx]
+
+    query = []
+    print("\nEnter query values:")
+    for i in idx:
+        query.append(float(input(f"{feature_names[i]}: ")))
+
+    query_orig = list(query)
+
+    metric = input("\nDistance metric (euclidean/manhattan): ").lower()
+    norm = input("\nApply normalization? (yes/no): ").lower()
+
+    selected_orig = [[row[0][i] for i in idx] for row in dataset]
+    labels = [row[1] for row in dataset]
+
+    features_to_use = [row[:] for row in selected_orig]
+    query_to_use = list(query_orig)
+
+    if norm == "yes":
+        features_to_use, query_to_use = normalize(features_to_use, query_to_use)
+
+    table_data = []
+    for i in range(len(dataset)):
+        d = distance(features_to_use[i], query_to_use, metric)
+        table_data.append({
+            'orig': selected_orig[i],
+            'norm': features_to_use[i],
+            'dist': d,
+            'label': labels[i]
+        })
+
+    sorted_by_dist = sorted(table_data, key=lambda x: x['dist'])
+
+    # --- PRINT FULL TABLE ---
+    header = ""
+    for name in sel_names:
+        header += f"{name:<15}"
+    if norm == "yes":
+        for name in sel_names:
+            header += f"Norm_{name[:3]:<15}"
+    header += f"{'Distance':<15} {'Rank'}"
+
+    print("\n" + header)
+    print("-" * len(header))
+
+    for item in table_data:
+        rank = sorted_by_dist.index(item) + 1
+        row_str = ""
+        for val in item['orig']:
+            row_str += f"{val:<15.1f}"
+        if norm == "yes":
+            for val in item['norm']:
+                row_str += f"{val:<15.3f}"
+        row_str += f"{item['dist']:<15.4f} {rank}"
+        print(row_str)
+    count_0 = sum(1 for row in dataset if row[1] == 0)
+    count_1 = sum(1 for row in dataset if row[1] == 1)
+
+    print("\nSample Distribution (100 records):")
+    print(f"Non-Diabetic (Class 0): {count_0}")
+    print(f"Diabetic (Class 1): {count_1}")
+    while True:
+        user_input = input("\nEnter K value ('exit' to stop): ").lower()
+
+        if user_input == "exit":
+            print("\nExit")
+            break
+
+        k = int(user_input)
+        vote_type = input("Voting method (weighted/unweighted): ").lower()
+
+        neighbors = sorted_by_dist[:k]
+
+        print(f"\n{'NEAREST NEIGHBORS':^80}")
+
+        neigh_header = ""
+        for name in sel_names:
+            neigh_header += f"{name:<15}"
+        neigh_header += f"{'Distance':<15} {'Class':<10}"
+        if vote_type == "weighted":
+            neigh_header += "Weight(1/d^2)"
+
+        print(neigh_header)
+        print("-" * len(neigh_header))
+
+        score = {}
+        weight_details = {}
+
+        for nbr in neighbors:
+            weight = 1.0 if vote_type == "unweighted" else 1 / (nbr['dist']**2 + 0.0001)
+            score[nbr['label']] = score.get(nbr['label'], 0) + weight
+
+            if vote_type == "weighted":
+                weight_details.setdefault(nbr['label'], []).append(weight)
+
+            row_str = ""
+            for val in nbr['orig']:
+                row_str += f"{val:<15.1f}"
+            row_str += f"{nbr['dist']:<15.4f} {nbr['label']:<10}"
+            if vote_type == "weighted":
+                row_str += f"{weight:.6f}"
+
+            print(row_str)
+
+        if vote_type == "weighted":
+            print("\nWeighted Calculation:")
+            print("-" * 40)
+            for cls in sorted(score.keys()):
+                status = "1" if cls == 1 else "0"
+                print(f"Total Weight for Class {cls} ({status}): {score[cls]:.6f}")
+                calc_expr = " + ".join(f"{w:.6f}" for w in weight_details[cls])
+                print(f"Calculation: {calc_expr} = {score[cls]:.6f}")
+        else:
+            print("\nMajority Count:")
+            for cls in sorted(score.keys()):
+                status = "Diabetic" if cls == 1 else "Non-Diabetic"
+                print(f"Class {cls} : {int(score[cls])}")
+
+        result = max(score, key=score.get)
+
+        print(f"\nThe given query is classified as "
+              f"{'1' if result == 1 else '0'} "
+              f"by {vote_type} voting.")
+
+if __name__ == "__main__":
+    knn()
+[23bcs120@mepcolinux ex3]$python3 p4.py
+
+Available Features:
+0 - Recency
+1 - Frequency
+2 - Monetary
+3 - Time
+4 - donatedblood
+
+Enter number of features: 4
+Enter feature indices: 0 1 2 3
+
+Enter query values:
+Recency: 1
+Frequency: 13
+Monetary: 3250
+Time: 47
+
+Distance metric (euclidean/manhattan): euclidean
+
+Apply normalization? (yes/no): yes
+
+Recency        Frequency      Monetary       Time           Norm_Rec            Norm_Fre            Norm_Mon            Norm_Tim            Distance        Rank
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+2.0            2.0            500.0          4.0            0.087          0.040          0.040          0.013          0.8279          14
+2.0            9.0            2250.0         74.0           0.087          0.320          0.320          0.899          0.4122          4
+23.0           1.0            250.0          23.0           1.000          0.000          0.000          0.253          1.2116          20
+4.0            5.0            1250.0         46.0           0.174          0.160          0.160          0.544          0.4711          6
+21.0           1.0            250.0          21.0           0.913          0.000          0.000          0.228          1.1512          19
+2.0            14.0           3500.0         48.0           0.087          0.520          0.520          0.570          0.0725          1
+4.0            3.0            750.0          25.0           0.174          0.080          0.080          0.278          0.6439          11
+2.0            12.0           3000.0         82.0           0.087          0.440          0.440          1.000          0.4487          5
+14.0           8.0            2000.0         46.0           0.609          0.280          0.280          0.544          0.6322          9
+16.0           1.0            250.0          16.0           0.696          0.000          0.000          0.165          1.0199          17
+2.0            6.0            1500.0         22.0           0.087          0.200          0.200          0.241          0.5088          7
+23.0           3.0            750.0          39.0           1.000          0.080          0.080          0.456          1.1159          18
+2.0            6.0            1500.0         15.0           0.087          0.200          0.200          0.152          0.5681          8
+4.0            3.0            750.0          16.0           0.174          0.080          0.080          0.165          0.7007          12
+4.0            1.0            250.0          4.0            0.174          0.000          0.000          0.013          0.8798          15
+0.0            26.0           6500.0         76.0           0.000          1.000          1.000          0.924          0.8231          13
+2.0            5.0            1250.0         11.0           0.087          0.160          0.160          0.101          0.6437          10
+4.0            9.0            2250.0         28.0           0.174          0.320          0.320          0.316          0.3550          2
+2.0            7.0            1750.0         32.0           0.087          0.240          0.240          0.367          0.3913          3
+3.0            1.0            250.0          3.0            0.130          0.000          0.000          0.000          0.8824          16
+
+Sample Distribution (100 records):
+Non-Diabetic (Class 0): 10
+Diabetic (Class 1): 10
+
+Enter K value ('exit' to stop): 5
+Voting method (weighted/unweighted): unweighted
+
+                               NEAREST NEIGHBORS
+Recency        Frequency      Monetary       Time           Distance        Class
+--------------------------------------------------------------------------------------
+2.0            14.0           3500.0         48.0           0.0725          1
+4.0            9.0            2250.0         28.0           0.3550          1
+2.0            7.0            1750.0         32.0           0.3913          1
+2.0            9.0            2250.0         74.0           0.4122          0
+2.0            12.0           3000.0         82.0           0.4487          0
+
+Majority Count:
+Class 0 : 2
+Class 1 : 3
+
+The given query is classified as 1 by unweighted voting.
+
+Enter K value ('exit' to stop): 5
+Voting method (weighted/unweighted): weighted
+
+                               NEAREST NEIGHBORS
+Recency        Frequency      Monetary       Time           Distance        Class     Weight(1/d^2)
+---------------------------------------------------------------------------------------------------
+2.0            14.0           3500.0         48.0           0.0725          1         186.895280
+4.0            9.0            2250.0         28.0           0.3550          1         7.926661
+2.0            7.0            1750.0         32.0           0.3913          1         6.525614
+2.0            9.0            2250.0         74.0           0.4122          0         5.882403
+2.0            12.0           3000.0         82.0           0.4487          0         4.963444
+
+Weighted Calculation:
+----------------------------------------
+Total Weight for Class 0: 10.845847
+Calculation: 5.882403 + 4.963444 = 10.845847
+Total Weight for Class 1: 201.347556
+Calculation: 186.895280 + 7.926661 + 6.525614 = 201.347556
+
+The given query is classified as 1 by weighted voting.
+
+Enter K value ('exit' to stop): exit
+
+Exit
+[23bcs120@mepcolinux ex3]$exit
+exit
+
+Script done on Tue Feb 24 11:59:50 2026
